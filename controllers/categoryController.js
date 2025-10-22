@@ -1,10 +1,9 @@
 // backend/controllers/categoryController.js
 const Category = require('../models/categoryModel');
-const fs = require('fs');
-const path = require('path');
+const { cloudinary } = require('../config/cloudinary');
 
 const categoryController = {
-  // GET /api/categories - Récupérer toutes les catégories
+  // GET /api/categories
   getAllCategories: async (req, res) => {
     try {
       const categories = await Category.getAll();
@@ -13,15 +12,15 @@ const categoryController = {
         data: categories
       });
     } catch (error) {
-      console.error('Erreur lors de la récupération des catégories:', error);
+      console.error('Erreur getAllCategories:', error);
       res.status(500).json({
         success: false,
-        message: 'Erreur serveur lors de la récupération des catégories'
+        message: 'Erreur serveur'
       });
     }
   },
 
-  // GET /api/categories/:id - Récupérer une catégorie
+  // GET /api/categories/:id
   getCategoryById: async (req, res) => {
     try {
       const { id } = req.params;
@@ -39,7 +38,7 @@ const categoryController = {
         data: category
       });
     } catch (error) {
-      console.error('Erreur lors de la récupération de la catégorie:', error);
+      console.error('Erreur getCategoryById:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur serveur'
@@ -47,7 +46,7 @@ const categoryController = {
     }
   },
 
-  // POST /api/categories - Créer une catégorie
+  // POST /api/categories
   createCategory: async (req, res) => {
     try {
       const { nom } = req.body;
@@ -55,9 +54,9 @@ const categoryController = {
       
       // Validation
       if (!nom || nom.trim() === '') {
-        // Supprimer l'image uploadée si la validation échoue
-        if (image) {
-          fs.unlinkSync(image.path);
+        // Supprimer l'image de Cloudinary si validation échoue
+        if (image && image.filename) {
+          await cloudinary.uploader.destroy(image.filename);
         }
         return res.status(400).json({
           success: false,
@@ -68,8 +67,8 @@ const categoryController = {
       // Vérifier si la catégorie existe déjà
       const exists = await Category.existsByName(nom);
       if (exists) {
-        if (image) {
-          fs.unlinkSync(image.path);
+        if (image && image.filename) {
+          await cloudinary.uploader.destroy(image.filename);
         }
         return res.status(409).json({
           success: false,
@@ -77,10 +76,11 @@ const categoryController = {
         });
       }
       
-      // Construire l'URL de l'image
-      const image_url = image ? `/uploads/categories/${image.filename}` : null;
+      // URL de l'image Cloudinary (ou null)
+      const image_url = image ? image.path : null;
+      const cloudinary_id = image ? image.filename : null;
       
-      const newCategory = await Category.create(nom.trim(), image_url);
+      const newCategory = await Category.create(nom.trim(), image_url, cloudinary_id);
       
       res.status(201).json({
         success: true,
@@ -88,21 +88,21 @@ const categoryController = {
         data: newCategory
       });
     } catch (error) {
-      console.error('Erreur lors de la création de la catégorie:', error);
+      console.error('Erreur createCategory:', error);
       
       // Supprimer l'image en cas d'erreur
-      if (req.file) {
-        fs.unlinkSync(req.file.path);
+      if (req.file && req.file.filename) {
+        await cloudinary.uploader.destroy(req.file.filename);
       }
       
       res.status(500).json({
         success: false,
-        message: 'Erreur serveur lors de la création'
+        message: 'Erreur serveur'
       });
     }
   },
 
-  // PUT /api/categories/:id - Mettre à jour une catégorie
+  // PUT /api/categories/:id
   updateCategory: async (req, res) => {
     try {
       const { id } = req.params;
@@ -111,8 +111,8 @@ const categoryController = {
       
       // Validation
       if (!nom || nom.trim() === '') {
-        if (image) {
-          fs.unlinkSync(image.path);
+        if (image && image.filename) {
+          await cloudinary.uploader.destroy(image.filename);
         }
         return res.status(400).json({
           success: false,
@@ -123,8 +123,8 @@ const categoryController = {
       // Vérifier si la catégorie existe
       const category = await Category.getById(id);
       if (!category) {
-        if (image) {
-          fs.unlinkSync(image.path);
+        if (image && image.filename) {
+          await cloudinary.uploader.destroy(image.filename);
         }
         return res.status(404).json({
           success: false,
@@ -132,11 +132,11 @@ const categoryController = {
         });
       }
       
-      // Vérifier si le nouveau nom existe déjà (sauf pour la catégorie actuelle)
+      // Vérifier si le nouveau nom existe déjà
       const exists = await Category.existsByName(nom, id);
       if (exists) {
-        if (image) {
-          fs.unlinkSync(image.path);
+        if (image && image.filename) {
+          await cloudinary.uploader.destroy(image.filename);
         }
         return res.status(409).json({
           success: false,
@@ -144,20 +144,20 @@ const categoryController = {
         });
       }
       
-      // Si une nouvelle image est uploadée
+      // Gestion de l'image
       let image_url = category.image_url;
+      let cloudinary_id = category.cloudinary_id;
+      
       if (image) {
-        // Supprimer l'ancienne image
-        if (category.image_url) {
-          const oldImagePath = path.join(__dirname, '..', category.image_url);
-          if (fs.existsSync(oldImagePath)) {
-            fs.unlinkSync(oldImagePath);
-          }
+        // Supprimer l'ancienne image de Cloudinary
+        if (category.cloudinary_id) {
+          await cloudinary.uploader.destroy(category.cloudinary_id);
         }
-        image_url = `/uploads/categories/${image.filename}`;
+        image_url = image.path;
+        cloudinary_id = image.filename;
       }
       
-      const updatedCategory = await Category.update(id, nom.trim(), image_url);
+      const updatedCategory = await Category.update(id, nom.trim(), image_url, cloudinary_id);
       
       res.status(200).json({
         success: true,
@@ -165,25 +165,24 @@ const categoryController = {
         data: updatedCategory
       });
     } catch (error) {
-      console.error('Erreur lors de la mise à jour de la catégorie:', error);
+      console.error('Erreur updateCategory:', error);
       
-      if (req.file) {
-        fs.unlinkSync(req.file.path);
+      if (req.file && req.file.filename) {
+        await cloudinary.uploader.destroy(req.file.filename);
       }
       
       res.status(500).json({
         success: false,
-        message: 'Erreur serveur lors de la mise à jour'
+        message: 'Erreur serveur'
       });
     }
   },
 
-  // DELETE /api/categories/:id - Supprimer une catégorie
+  // DELETE /api/categories/:id
   deleteCategory: async (req, res) => {
     try {
       const { id } = req.params;
       
-      // Vérifier si la catégorie existe
       const category = await Category.getById(id);
       if (!category) {
         return res.status(404).json({
@@ -194,12 +193,9 @@ const categoryController = {
       
       await Category.delete(id);
       
-      // Supprimer l'image associée
-      if (category.image_url) {
-        const imagePath = path.join(__dirname, '..', category.image_url);
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
+      // Supprimer l'image de Cloudinary
+      if (category.cloudinary_id) {
+        await cloudinary.uploader.destroy(category.cloudinary_id);
       }
       
       res.status(200).json({
@@ -207,19 +203,18 @@ const categoryController = {
         message: 'Catégorie supprimée avec succès'
       });
     } catch (error) {
-      console.error('Erreur lors de la suppression de la catégorie:', error);
+      console.error('Erreur deleteCategory:', error);
       
-      // Gestion erreur de clé étrangère (produits associés)
       if (error.code === 'ER_ROW_IS_REFERENCED_2') {
         return res.status(409).json({
           success: false,
-          message: 'Impossible de supprimer cette catégorie car des produits y sont associés'
+          message: 'Impossible de supprimer - produits associés'
         });
       }
       
       res.status(500).json({
         success: false,
-        message: 'Erreur serveur lors de la suppression'
+        message: 'Erreur serveur'
       });
     }
   }
