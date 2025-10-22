@@ -14,7 +14,14 @@ const upload = multer({
 
 router.get('/', categoryController.getAllCategories);
 router.get('/:id', categoryController.getCategoryById);
-router.post('/', protect, upload.single('image'), categoryController.createCategory);
+router.post('/', protect, upload.single('image'), 
+(req, res, next) => {
+  console.log('🔍 Multer result:', {
+    file: req.file,
+    body: req.body
+  });
+  next();
+}, categoryController.createCategory);
 router.put('/:id', protect, upload.single('image'), categoryController.updateCategory);
 router.delete('/:id', protect, categoryController.deleteCategory);
 
