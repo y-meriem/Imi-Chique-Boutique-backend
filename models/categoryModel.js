@@ -2,7 +2,6 @@
 const db = require('../config/database');
 
 const Category = {
-  // Récupérer toutes les catégories
   getAll: async () => {
     try {
       const [rows] = await db.query('SELECT * FROM categories ORDER BY nom ASC');
@@ -13,7 +12,6 @@ const Category = {
     }
   },
 
-  // Récupérer une catégorie par ID
   getById: async (id) => {
     try {
       const [rows] = await db.query('SELECT * FROM categories WHERE id = ?', [id]);
@@ -24,43 +22,40 @@ const Category = {
     }
   },
 
-  // Créer une nouvelle catégorie
-  create: async (nom, image_url = null) => {
+  create: async (nom, image_url = null, cloudinary_id = null) => {
     try {
       const [result] = await db.query(
-        'INSERT INTO categories (nom, image_url) VALUES (?, ?)', 
-        [nom, image_url]
+        'INSERT INTO categories (nom, image_url, cloudinary_id) VALUES (?, ?, ?)', 
+        [nom, image_url, cloudinary_id]
       );
-      return { id: result.insertId, nom, image_url };
+      return { id: result.insertId, nom, image_url, cloudinary_id };
     } catch (err) {
       console.error('❌ Erreur SQL create:', err);
       throw err;
     }
   },
 
-  // Mettre à jour une catégorie
-  update: async (id, nom, image_url = null) => {
+  update: async (id, nom, image_url = null, cloudinary_id = null) => {
     try {
       let query = 'UPDATE categories SET nom = ?';
       const params = [nom];
       
       if (image_url !== null) {
-        query += ', image_url = ?';
-        params.push(image_url);
+        query += ', image_url = ?, cloudinary_id = ?';
+        params.push(image_url, cloudinary_id);
       }
       
       query += ' WHERE id = ?';
       params.push(id);
       
       await db.query(query, params);
-      return { id, nom, image_url };
+      return { id, nom, image_url, cloudinary_id };
     } catch (err) {
       console.error('❌ Erreur SQL update:', err);
       throw err;
     }
   },
 
-  // Supprimer une catégorie
   delete: async (id) => {
     try {
       const [result] = await db.query('DELETE FROM categories WHERE id = ?', [id]);
@@ -71,7 +66,6 @@ const Category = {
     }
   },
 
-  // Vérifier si une catégorie existe par nom
   existsByName: async (nom, excludeId = null) => {
     try {
       let query = 'SELECT COUNT(*) as count FROM categories WHERE nom = ?';
