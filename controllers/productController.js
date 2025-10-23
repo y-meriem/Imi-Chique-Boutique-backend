@@ -23,17 +23,15 @@ class ProductController {
 }
 
     // Gérer les images uploadées
-if (req.files && req.files.length > 0) {
-  productData.images = req.files.map((file, index) => ({
-    url_image: file.path, // ✨ URL Cloudinary
-    cloudinary_id: file.filename, // ✨ ID Cloudinary
-    couleur: productData.imageColors && productData.imageColors[index] 
-      ? productData.imageColors[index] 
-      : null,
-    ordre: index + 1,
-    est_principale: index === 0
-  }));
-}
+    if (req.files && req.files.length > 0) {
+      productData.images = req.files.map((file, index) => ({
+        url_image: `/uploads/${file.filename}`,
+        couleur: productData.imageColors && productData.imageColors[index] ? productData.imageColors[index] : null,
+        ordre: index + 1,
+        est_principale: index === 0
+      }));
+    }
+
     const result = await ProductModel.createProduct(productData);
 
     res.status(201).json({
@@ -129,16 +127,12 @@ if (req.files && req.files.length > 0) {
     }
     
     // Gérer les nouvelles images uploadées
-   // Remplacer cette partie :
-if (req.files && req.files.length > 0) {
-  productData.images = req.files.map((file, index) => ({
-    url_image: file.path, // ✨ URL Cloudinary
-    cloudinary_id: file.filename, // ✨ ID Cloudinary
-    couleur: productData.imageColors && productData.imageColors[index] 
-      ? productData.imageColors[index] 
-      : null
-  }));
-}
+    if (req.files && req.files.length > 0) {
+      productData.images = req.files.map((file, index) => ({
+        url_image: `/uploads/${file.filename}`,
+        couleur: productData.imageColors && productData.imageColors[index] ? productData.imageColors[index] : null
+      }));
+    }
 
     const result = await ProductModel.updateProduct(id, productData);
 
