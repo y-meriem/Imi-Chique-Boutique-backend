@@ -1,7 +1,7 @@
 // models/productModel.js
 const db = require('../config/database');
-const fs = require('fs').promises;
-const path = require('path');
+const cloudinary = require('cloudinary').v2;
+
 
 class ProductModel {
   // Créer un produit avec toutes ses relations
@@ -61,11 +61,12 @@ class ProductModel {
         img.couleur ? couleurMap[img.couleur.toLowerCase().trim()] : null,
         img.url_image,
         img.ordre || 0,
+        img.cloudinary_id,
         img.est_principale || false
       ]);
 
       await connection.query(
-        `INSERT INTO images_produit (id_produit, id_couleur, url_image, ordre, est_principale) 
+        `INSERT INTO images_produit (id_produit, id_couleur, url_image, cloudinary_id, ordre, est_principale) 
          VALUES ?`,
         [imageValues]
       );
@@ -335,27 +336,32 @@ static async updateProduct(id, productData) {
    
 
     // 5. Supprimer les images marquées pour suppression
-    if (productData.imagesToDelete && productData.imagesToDelete.length > 0) {
-      
-      const [imagesToDelete] = await connection.query(
-        `SELECT url_image FROM images_produit WHERE id IN (?)`,
-        [productData.imagesToDelete]
-      );
+    
+    // 5. Supprimer les images marquées pour suppression
+if (productData.imagesToDelete && productData.imagesToDelete.length > 0) {
+  
+  const [imagesToDelete] = await connection.query(
+    `SELECT cloudinary_id FROM images_produit WHERE id IN (?)`, // ✨ CHANGÉ
+    [productData.imagesToDelete]
+  );
 
-      for (let img of imagesToDelete) {
-        try {
-          const imagePath = path.join(__dirname, '..', img.url_image);
-          await fs.unlink(imagePath);
-        } catch (err) {
-          console.error('❌ Erreur suppression fichier:', err);
-        }
+  // ✨ Supprimer de Cloudinary
+  for (let img of imagesToDelete) {
+    if (img.cloudinary_id) {
+      try {
+        await cloudinary.uploader.destroy(img.cloudinary_id);
+        console.log('✅ Image Cloudinary supprimée:', img.cloudinary_id);
+      } catch (err) {
+        console.error('❌ Erreur suppression Cloudinary:', err);
       }
-
-      await connection.query(
-        `DELETE FROM images_produit WHERE id IN (?)`,
-        [productData.imagesToDelete]
-      );
     }
+  }
+
+  await connection.query(
+    `DELETE FROM images_produit WHERE id IN (?)`,
+    [productData.imagesToDelete]
+  );
+}
 
     // 6. Mettre à jour les images existantes
     if (productData.existingImages && productData.existingImages.length > 0) {
@@ -378,36 +384,37 @@ static async updateProduct(id, productData) {
     }
 
     // 7. Insérer les nouvelles images
-    if (productData.images && productData.images.length > 0) {
-      
-      const [countResult] = await connection.query(
-        `SELECT COUNT(*) as count FROM images_produit WHERE id_produit = ?`,
-        [id]
-      );
-      let startOrder = countResult[0].count;
+    // 7. Insérer les nouvelles images
+if (productData.images && productData.images.length > 0) {
+  
+  const [countResult] = await connection.query(
+    `SELECT COUNT(*) as count FROM images_produit WHERE id_produit = ?`,
+    [id]
+  );
+  let startOrder = countResult[0].count;
 
-      const imageValues = productData.images.map((img, index) => {
-        const couleurKey = img.couleur ? img.couleur.toLowerCase().trim() : null;
-        const idCouleur = couleurKey && couleurMap[couleurKey] 
-          ? couleurMap[couleurKey] 
-          : null;
+  const imageValues = productData.images.map((img, index) => {
+    const couleurKey = img.couleur ? img.couleur.toLowerCase().trim() : null;
+    const idCouleur = couleurKey && couleurMap[couleurKey] 
+      ? couleurMap[couleurKey] 
+      : null;
 
+    return [
+      id,
+      idCouleur,
+      img.url_image,
+      img.cloudinary_id, // ✨ AJOUTÉ
+      startOrder + index + 1,
+      false
+    ];
+  });
 
-        return [
-          id,
-          idCouleur,
-          img.url_image,
-          startOrder + index + 1,
-          false
-        ];
-      });
-
-      await connection.query(
-        `INSERT INTO images_produit (id_produit, id_couleur, url_image, ordre, est_principale) 
-         VALUES ?`,
-        [imageValues]
-      );
-    }
+  await connection.query(
+    `INSERT INTO images_produit (id_produit, id_couleur, url_image, cloudinary_id, ordre, est_principale) // ✨ AJOUTÉ cloudinary_id
+     VALUES ?`,
+    [imageValues]
+  );
+}
 
     // 8. Supprimer les anciennes tailles
    if (productData.tailles && productData.tailles.length > 0) {
@@ -526,20 +533,23 @@ if (productData.couleurs && productData.couleurs.length > 0) {
       await connection.beginTransaction();
 
       // 1. Récupérer les images pour les supprimer du système de fichiers
-      const [images] = await connection.query(
-        `SELECT url_image FROM images_produit WHERE id_produit = ?`,
-        [id]
-      );
+      
+const [images] = await connection.query(
+  `SELECT cloudinary_id FROM images_produit WHERE id_produit = ?`, // ✨ CHANGÉ
+  [id]
+);
 
-      // Supprimer les fichiers physiques
-      for (let img of images) {
-        try {
-          const imagePath = path.join(__dirname, '..', img.url_image);
-          await fs.unlink(imagePath);
-        } catch (err) {
-          console.error('Erreur suppression fichier:', err);
-        }
-      }
+// ✨ Supprimer de Cloudinary
+for (let img of images) {
+  if (img.cloudinary_id) {
+    try {
+      await cloudinary.uploader.destroy(img.cloudinary_id);
+      console.log('✅ Image Cloudinary supprimée:', img.cloudinary_id);
+    } catch (err) {
+      console.error('❌ Erreur suppression Cloudinary:', err);
+    }
+  }
+}
 
       // 2. Supprimer les images de la base de données
       await connection.query(
