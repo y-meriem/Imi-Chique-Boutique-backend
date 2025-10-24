@@ -108,44 +108,99 @@ static async findByTelephone(telephone) {
   }
 
   // Mettre à jour un utilisateur
-  static async updateUser(id, data) {
-    try {
-      const updates = [];
-      const values = [];
-
-      if (data.nom) {
-        updates.push('nom = ?');
-        values.push(data.nom);
-      }
-      if (data.prenom) {
-        updates.push('prenom = ?');
-        values.push(data.prenom);
-      }
-      if (data.email) {
-        updates.push('email = ?');
-        values.push(data.email);
-      }
-      if (data.telephone) {
-        updates.push('telephone = ?');
-        values.push(data.telephone);
-      }
-      if (data.type) {
-        updates.push('type = ?');
-        values.push(data.type);
-      }
-
-      values.push(id);
-
-      await db.query(
-        `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
-        values
-      );
-      
-      return { success: true };
-    } catch (error) {
-      throw error;
+static async updateUser(id, data) {
+  try {
+    // Vérifier que l'utilisateur existe
+    const [user] = await db.query('SELECT id FROM users WHERE id = ?', [id]);
+    if (user.length === 0) {
+      throw new Error('Utilisateur introuvable');
     }
+
+    // Vérifier si l'email existe déjà (pour un autre utilisateur)
+    if (data.email) {
+      const [existingEmail] = await db.query(
+        'SELECT id FROM users WHERE email = ? AND id != ?',
+        [data.email, id]
+      );
+      if (existingEmail.length > 0) {
+        throw new Error('Cet email est déjà utilisé par un autre utilisateur');
+      }
+    }
+
+    // Vérifier si le téléphone existe déjà (pour un autre utilisateur)
+    if (data.telephone) {
+      // Normaliser le téléphone (enlever les espaces)
+      const normalizedPhone = data.telephone.replace(/\s/g, '');
+      
+      const [existingPhone] = await db.query(
+        'SELECT id FROM users WHERE telephone = ? AND id != ?',
+        [normalizedPhone, id]
+      );
+      if (existingPhone.length > 0) {
+        throw new Error('Ce numéro de téléphone est déjà utilisé par un autre utilisateur');
+      }
+      
+      // Utiliser le téléphone normalisé pour la mise à jour
+      data.telephone = normalizedPhone;
+    }
+
+    // Construction dynamique de la requête UPDATE
+    const updates = [];
+    const values = [];
+
+    // Liste des champs autorisés à être mis à jour
+    const allowedFields = ['nom', 'prenom', 'email', 'telephone', 'type'];
+    
+    allowedFields.forEach(field => {
+      if (data[field] !== undefined && data[field] !== null && data[field] !== '') {
+        updates.push(`${field} = ?`);
+        values.push(data[field]);
+      }
+    });
+
+    // Vérifier qu'il y a au moins un champ à mettre à jour
+    if (updates.length === 0) {
+      throw new Error('Aucune donnée à mettre à jour');
+    }
+
+    // Ajouter la date de mise à jour
+    updates.push('updated_at = NOW()');
+    values.push(id);
+
+    // Exécuter la mise à jour
+    const [result] = await db.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    // Vérifier si la mise à jour a affecté des lignes
+    if (result.affectedRows === 0) {
+      throw new Error('Aucune modification effectuée');
+    }
+
+    // Récupérer les données mises à jour
+    const [updatedUser] = await db.query(
+      'SELECT id, nom, prenom, email, telephone, type, created_at, updated_at FROM users WHERE id = ?',
+      [id]
+    );
+    
+    return { 
+      success: true,
+      user: updatedUser[0]
+    };
+  } catch (error) {
+    // Gestion des erreurs spécifiques de MySQL
+    if (error.code === 'ER_DUP_ENTRY') {
+      if (error.message.includes('email')) {
+        throw new Error('Cet email est déjà utilisé par un autre utilisateur');
+      }
+      if (error.message.includes('telephone')) {
+        throw new Error('Ce numéro de téléphone est déjà utilisé par un autre utilisateur');
+      }
+    }
+    throw error;
   }
+}
 
   // Supprimer un utilisateur
   static async deleteUser(id) {
