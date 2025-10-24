@@ -127,88 +127,70 @@ exports.login = async (req, res) => {
 };
 
 // Demande de réinitialisation de mot de passe
+// Générer un code à 6 chiffres
+const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email requis'
-      });
-    }
-
-    // Trouver l'utilisateur
+    
     const user = await UserModel.findByEmail(email);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Aucun utilisateur trouvé avec cet email'
-      });
+      return res.status(404).json({ success: false, message: 'Email introuvable' });
     }
 
-    // Générer un token de réinitialisation
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 heure
+    const code = generateCode();
+    const expiry = new Date(Date.now() + 10 * 60000); // 10 minutes
 
-    // Sauvegarder le token
-    await UserModel.saveResetToken(email, resetToken, resetTokenExpiry);
+    await UserModel.saveResetToken(email, code, expiry);
 
-    // TODO: Envoyer l'email avec nodemailer
-    // const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-    // Envoyer l'email ici...
-
-    res.json({
-      success: true,
-      message: 'Email de réinitialisation envoyé',
-      resetToken // À retirer en production, seulement pour le développement
+    // Envoyer l'email
+    const transporter = require('../config/emailConfig');
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Code de réinitialisation',
+      html: `<h2>Votre code de vérification</h2>
+             <p>Code : <strong>${code}</strong></p>
+             <p>Valide pendant 10 minutes</p>`
     });
+
+    res.json({ success: true, message: 'Code envoyé par email' });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la demande de réinitialisation',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+exports.verifyResetCode = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    
+    const user = await UserModel.findByResetToken(code);
+    
+    if (!user || user.email !== email) {
+      return res.status(400).json({ success: false, message: 'Code invalide ou expiré' });
+    }
 
+    res.json({ success: true, message: 'Code valide' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 // Réinitialiser le mot de passe
 exports.resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+    const { email, code, newPassword } = req.body;
 
-    if (!token || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Token et nouveau mot de passe requis'
-      });
+    const user = await UserModel.findByResetToken(code);
+    if (!user || user.email !== email) {
+      return res.status(400).json({ success: false, message: 'Code invalide' });
     }
 
-    // Trouver l'utilisateur par token
-    const user = await UserModel.findByResetToken(token);
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Token invalide ou expiré'
-      });
-    }
+    await UserModel.updatePassword(email, newPassword);
+    await UserModel.clearResetToken(email);
 
-    // Mettre à jour le mot de passe
-    await UserModel.updatePassword(user.email, newPassword);
-
-    // Effacer le token
-    await UserModel.clearResetToken(user.email);
-
-    res.json({
-      success: true,
-      message: 'Mot de passe réinitialisé avec succès'
-    });
+    res.json({ success: true, message: 'Mot de passe modifié' });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la réinitialisation',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -342,6 +324,21 @@ exports.updateProfile = async (req, res) => {
   try {
     const { nom, prenom, email, telephone } = req.body;
     
+    // Validation basique
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Format d\'email invalide'
+      });
+    }
+
+    if (telephone && !/^[0-9]{10}$/.test(telephone.replace(/\s/g, ''))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Format de téléphone invalide (10 chiffres requis)'
+      });
+    }
+    
     await UserModel.updateUser(req.user.id, { nom, prenom, email, telephone });
     
     res.json({
@@ -349,6 +346,14 @@ exports.updateProfile = async (req, res) => {
       message: 'Profil mis à jour avec succès'
     });
   } catch (error) {
+    // Gestion des erreurs spécifiques
+    if (error.message.includes('email') || error.message.includes('téléphone')) {
+      return res.status(409).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Erreur lors de la mise à jour du profil',
