@@ -13,6 +13,7 @@ const livraisonsRoutes = require('./routes/livraisonsRoutes');
 const userRoutes = require('./routes/userRoutes');
 const avisRoutes = require('./routes/avisRoutes');
 const favorisRoutes = require('./routes/favorisRoutes');
+const stockRoutes = require('./routes/stockRoutes');
 
 
 const app = express();
@@ -32,7 +33,7 @@ app.use('/api/livraisons', livraisonsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/avis', avisRoutes);
 app.use('/api/favoris', favorisRoutes);
-
+app.use('/api/stock', stockRoutes);
 const orderController = require('./controllers/orderController');
 app.get('/api/users/:userId/orders', orderController.getOrdersByUserId);
 
