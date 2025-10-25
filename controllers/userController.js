@@ -133,6 +133,16 @@ const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString(
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    console.log('📧 Forgot password:', email);
+    
+    // Vérifier variables d'environnement
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('❌ EMAIL_USER ou EMAIL_PASS manquant');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Service email non configuré' 
+      });
+    }
     
     const user = await UserModel.findByEmail(email);
     if (!user) {
@@ -140,26 +150,29 @@ exports.forgotPassword = async (req, res) => {
     }
 
     const code = generateCode();
-    const expiry = new Date(Date.now() + 10 * 60000); // 10 minutes
+    const expiry = new Date(Date.now() + 10 * 60000);
 
     await UserModel.saveResetToken(email, code, expiry);
+    console.log('✅ Code sauvegardé:', code);
 
-    // Envoyer l'email
     const transporter = require('../config/emailConfig');
+    
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject: 'Code de réinitialisation',
-      html: `<h2>Votre code de vérification</h2>
-             <p>Code : <strong>${code}</strong></p>
-             <p>Valide pendant 10 minutes</p>`
+      html: `<h2>Votre code: <strong>${code}</strong></h2><p>Valide 10 min</p>`
     });
 
-    res.json({ success: true, message: 'Code envoyé par email' });
+    console.log('✅ Email envoyé');
+    res.json({ success: true, message: 'Code envoyé' });
   } catch (error) {
+    console.error('❌ Erreur:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };
+  
+
 exports.verifyResetCode = async (req, res) => {
   try {
     const { email, code } = req.body;
