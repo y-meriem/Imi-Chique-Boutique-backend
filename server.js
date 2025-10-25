@@ -17,13 +17,13 @@ const stockRoutes = require('./routes/stockRoutes');
 
 const app = express();
 
-// Configuration CORS pour Render
+// Configuration CORS pour GitHub Pages et Render
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  process.env.FRONTEND_URL, // Ajoutez l'URL de votre frontend Render dans .env
-  'https://votre-frontend.onrender.com' // Remplacez par votre URL frontend
-].filter(Boolean); // Enlève les valeurs undefined
+  'https://y-meriem.github.io', // ✅ GitHub Pages
+  process.env.FRONTEND_URL
+].filter(Boolean);
 
 app.use(cors({
   origin: function(origin, callback) {
@@ -31,6 +31,7 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      console.log('✅ Origin autorisée:', origin);
       callback(null, true);
     } else {
       console.log('❌ Origin bloquée:', origin);
