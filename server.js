@@ -4,7 +4,7 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 require('dotenv').config();
-
+require('./config/emailConfig');
 const productRoutes = require('./routes/productRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const orderRoutes = require('./routes/orderRoutes');
